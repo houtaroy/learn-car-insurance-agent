@@ -1,7 +1,7 @@
 [project]
 name = "learn-car-insurance-agent"
 version = "0.1.0"
-description = "基于 FastAPI 和 OpenAI Responses API 的对话接口。"
+description = "学习车险智能体"
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
