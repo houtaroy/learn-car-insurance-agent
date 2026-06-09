@@ -1,11 +1,12 @@
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterable, AsyncIterator
 from contextlib import asynccontextmanager
 
 from fastapi import Depends, FastAPI, HTTPException, Request, status
+from fastapi.sse import EventSourceResponse
 from openai import APIError, AsyncOpenAI
 
 from app.config import Settings, get_settings
-from app.schemas import ChatRequest, ChatResponse
+from app.schemas import ChatRequest, ChatResponse, ChatStreamEvent
 
 
 @asynccontextmanager
@@ -59,3 +60,22 @@ async def chat(
         ) from exc
 
     return ChatResponse(reply=response.output_text)
+
+
+@app.post("/chat/stream", response_class=EventSourceResponse)
+async def chat_stream(
+    request: ChatRequest,
+    settings: Settings = Depends(get_app_settings),
+    client: AsyncOpenAI = Depends(get_openai_client),
+) -> AsyncIterable[ChatStreamEvent]:
+    stream = await client.responses.create(
+        model=settings.openai_model,
+        input=request.message,
+        reasoning={"effort": "none"},
+        stream=True,
+    )
+
+    async with stream:
+        async for event in stream:
+            if isinstance(event, ChatStreamEvent):
+                yield event
