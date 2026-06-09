@@ -50,6 +50,7 @@ async def chat(
         response = await client.responses.create(
             model=settings.openai_model,
             input=request.message,
+            reasoning={"effort": "none"},
         )
     except APIError as exc:
         raise HTTPException(
