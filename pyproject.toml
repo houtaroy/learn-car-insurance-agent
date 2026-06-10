@@ -3,9 +3,9 @@ name = "learn-car-insurance-agent"
 version = "0.1.0"
 description = "学习车险智能体"
 readme = "README.md"
-requires-python = ">=3.11"
+requires-python = ">=3.13,<3.14"
 dependencies = [
-    "fastapi[standard]>=0.115.0",
+    "fastapi[standard]>=0.135.1",
     "openai>=1.109.0",
     "pydantic-settings>=2.6.0",
 ]
