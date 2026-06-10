@@ -70,8 +70,11 @@ async def chat_stream(
 ) -> AsyncIterable[ChatStreamEvent]:
     stream = await client.responses.create(
         model=settings.openai_model,
-        input=request.message,
-        reasoning={"effort": "none"},
+        reasoning={"effort": "minimal"},
+        input=[
+            {"role": "developer", "content": "你是一个车险助手"},
+            {"role": "user", "content": request.message},
+        ],
         stream=True,
     )
 
