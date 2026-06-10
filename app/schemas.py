@@ -4,6 +4,7 @@ from openai.types.responses import (
     ResponseOutputItemAddedEvent,
     ResponseOutputItemDoneEvent,
     ResponseTextDeltaEvent,
+    ResponseReasoningSummaryTextDeltaEvent,
 )
 from pydantic import BaseModel, Field
 
@@ -19,6 +20,7 @@ class ChatResponse(BaseModel):
 ChatStreamEvent = (
     ResponseCreatedEvent
     | ResponseOutputItemAddedEvent
+    | ResponseReasoningSummaryTextDeltaEvent
     | ResponseTextDeltaEvent
     | ResponseOutputItemDoneEvent
     | ResponseCompletedEvent
