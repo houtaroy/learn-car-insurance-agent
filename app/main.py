@@ -1,19 +1,23 @@
-from collections.abc import AsyncIterable, AsyncIterator
+from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
-from fastapi import Depends, FastAPI, HTTPException, Request, status
-from fastapi.sse import EventSourceResponse
-from openai import APIError, AsyncOpenAI
+from fastapi import FastAPI
 
-from app.config import Settings, get_settings
-from app.schemas import ChatRequest, ChatResponse, ChatStreamEvent
+from app.api import router
+from app.config import get_settings
+from app.database import create_db_and_tables
+from app.deps import build_openai_client
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     settings = get_settings()
     app.state.settings = settings
+
+    create_db_and_tables()
+
     app.state.openai_client = build_openai_client(settings)
+
     try:
         yield
     finally:
@@ -21,64 +25,4 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
 
 app = FastAPI(title="学习车险智能体", lifespan=lifespan)
-
-
-def build_openai_client(settings: Settings) -> AsyncOpenAI:
-    if not settings.openai_api_key:
-        raise RuntimeError("OPENAI_API_KEY 未配置。")
-
-    return AsyncOpenAI(
-        api_key=settings.openai_api_key,
-        base_url=settings.openai_base_url,
-    )
-
-
-def get_app_settings(request: Request) -> Settings:
-    return request.app.state.settings
-
-
-def get_openai_client(request: Request) -> AsyncOpenAI:
-    return request.app.state.openai_client
-
-
-@app.post("/chat", response_model=ChatResponse)
-async def chat(
-    request: ChatRequest,
-    settings: Settings = Depends(get_app_settings),
-    client: AsyncOpenAI = Depends(get_openai_client),
-) -> ChatResponse:
-    try:
-        response = await client.responses.create(
-            model=settings.openai_model,
-            input=request.message,
-            reasoning={"effort": "none"},
-        )
-    except APIError as exc:
-        raise HTTPException(
-            status_code=status.HTTP_502_BAD_GATEWAY,
-            detail=f"OpenAI API 请求失败：{exc.message}",
-        ) from exc
-
-    return ChatResponse(reply=response.output_text)
-
-
-@app.post("/chat/stream", response_class=EventSourceResponse)
-async def chat_stream(
-    request: ChatRequest,
-    settings: Settings = Depends(get_app_settings),
-    client: AsyncOpenAI = Depends(get_openai_client),
-) -> AsyncIterable[ChatStreamEvent]:
-    stream = await client.responses.create(
-        model=settings.openai_model,
-        reasoning={"effort": "minimal"},
-        input=[
-            {"role": "developer", "content": "你是一个车险助手"},
-            {"role": "user", "content": request.message},
-        ],
-        stream=True,
-    )
-
-    async with stream:
-        async for event in stream:
-            if isinstance(event, ChatStreamEvent):
-                yield event
+app.include_router(router)
