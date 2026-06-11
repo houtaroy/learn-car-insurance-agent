@@ -51,20 +51,21 @@ def get_openai_client(request: Request) -> AsyncOpenAI:
 
 def build_input(
     session: Session,
+    window_size: int,
 ) -> ResponseInputParam:
-    conversation: list[object] = [
+    input: list[object] = [
         {"role": "developer", "content": "你是一个车险助手"},
     ]
 
-    statement = select(Message).order_by(col(Message.id))
+    statement = select(Message).order_by(col(Message.id).desc()).limit(window_size)
     messages = session.exec(statement).all()
-    for message in messages:
+    for message in reversed(messages):
         if message.input:
-            conversation.extend(message.input)
+            input.extend(message.input)
         if message.output:
-            conversation.extend(message.output)
+            input.extend(message.output)
 
-    return RESPONSE_INPUT_ADAPTER.validate_python(conversation)
+    return RESPONSE_INPUT_ADAPTER.validate_python(input)
 
 
 def save_user_message(session: Session, content: str) -> None:
@@ -83,8 +84,6 @@ def save_response_message(
     session: Session,
     response: Response,
 ) -> None:
-    if response.completed_at is None:
-        raise ValueError("只能持久化已完成的响应。")
 
     message = Message(
         response_id=response.id,
@@ -109,7 +108,7 @@ async def chat(
 
     save_user_message(session, request.message)
 
-    input = build_input(session)
+    input = build_input(session, settings.chat_history_window_size)
 
     try:
         response = await client.responses.create(
@@ -138,7 +137,7 @@ async def chat_stream(
 
     save_user_message(session, request.message)
 
-    input = build_input(session)
+    input = build_input(session, settings.chat_history_window_size)
 
     stream = await client.responses.create(
         model=settings.openai_model,

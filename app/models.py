@@ -17,4 +17,4 @@ class Message(SQLModel, table=True):
         sa_column=Column(JSON, nullable=True),
     )
     created_at: float
-    completed_at: float
+    completed_at: float | None = None

@@ -15,6 +15,11 @@ class Settings(BaseSettings):
         alias="OPENAI_BASE_URL",
     )
     openai_model: str = Field(default="gpt-4o-mini", alias="OPENAI_MODEL")
+    chat_history_window_size: int = Field(
+        default=20,
+        alias="CHAT_HISTORY_WINDOW_SIZE",
+        gt=0,
+    )
 
     model_config = SettingsConfigDict(
         env_file=".env",
