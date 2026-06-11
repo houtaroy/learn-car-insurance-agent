@@ -2,12 +2,12 @@ from collections.abc import AsyncIterable, AsyncIterator
 from contextlib import asynccontextmanager
 from time import time
 
-from fastapi import Depends, FastAPI, HTTPException, Request, status
+from fastapi import Depends, FastAPI, HTTPException, Query, Request, status
 from fastapi.sse import EventSourceResponse
 from openai import APIError, AsyncOpenAI
 from openai.types.responses import Response, ResponseCompletedEvent, ResponseInputParam
 from pydantic import TypeAdapter
-from sqlmodel import Session, select, col
+from sqlmodel import Session, col, delete, select
 
 from app.config import Settings, get_settings
 from app.database import create_db_and_tables, get_session
@@ -95,6 +95,24 @@ def save_response_message(
         completed_at=response.completed_at,
     )
     session.add(message)
+    session.commit()
+
+
+@app.get("/messages", response_model=list[Message])
+def list_messages(
+    cursor: int | None = None,
+    limit: int = Query(default=20, ge=1, le=100),
+    session: Session = Depends(get_session),
+) -> list[Message]:
+    statement = select(Message).order_by(col(Message.id).desc()).limit(limit)
+    if cursor is not None:
+        statement = statement.where(col(Message.id) < cursor)
+    return list(reversed(session.exec(statement).all()))
+
+
+@app.delete("/messages", status_code=status.HTTP_204_NO_CONTENT)
+def clear_messages(session: Session = Depends(get_session)) -> None:
+    session.exec(delete(Message))
     session.commit()
 
 
