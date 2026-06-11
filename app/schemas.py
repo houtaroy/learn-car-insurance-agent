@@ -3,6 +3,7 @@ from openai.types.responses import (
     ResponseCreatedEvent,
     ResponseOutputItemAddedEvent,
     ResponseOutputItemDoneEvent,
+    ResponseFunctionCallArgumentsDeltaEvent,
     ResponseTextDeltaEvent,
     ResponseReasoningSummaryTextDeltaEvent,
 )
@@ -21,6 +22,7 @@ ChatStreamEvent = (
     ResponseCreatedEvent
     | ResponseOutputItemAddedEvent
     | ResponseReasoningSummaryTextDeltaEvent
+    | ResponseFunctionCallArgumentsDeltaEvent
     | ResponseTextDeltaEvent
     | ResponseOutputItemDoneEvent
     | ResponseCompletedEvent

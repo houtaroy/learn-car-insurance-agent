@@ -6,6 +6,7 @@ from sqlmodel import Field, SQLModel
 
 class Message(SQLModel, table=True):
     id: int | None = Field(default=None, primary_key=True)
+    run_id: str | None = Field(default=None, index=True)
     response_id: str | None = Field(default=None, index=True, unique=True)
     model: str | None = None
     input: list[dict[str, Any]] | None = Field(

@@ -15,9 +15,9 @@ class Settings(BaseSettings):
         alias="OPENAI_BASE_URL",
     )
     openai_model: str = Field(default="gpt-4o-mini", alias="OPENAI_MODEL")
-    chat_history_window_size: int = Field(
-        default=21,
-        alias="CHAT_HISTORY_WINDOW_SIZE",
+    chat_history_run_limit: int = Field(
+        default=10,
+        alias="CHAT_HISTORY_RUN_LIMIT",
         gt=0,
     )
 
