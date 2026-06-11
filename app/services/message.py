@@ -1,13 +1,12 @@
 from time import time
+from typing import Any
 
-from openai.types.responses import Response, ResponseInputParam
-from pydantic import TypeAdapter
+from openai.types.responses import Response
+from openai.types.responses.response_input_param import FunctionCallOutput
+from sqlalchemy import func
 from sqlmodel import Session, col, delete, select
 
 from app.models import Message
-
-
-RESPONSE_INPUT_ADAPTER = TypeAdapter(ResponseInputParam)
 
 
 def list_messages(
@@ -22,35 +21,41 @@ def list_messages(
     return list(reversed(session.exec(statement).all()))
 
 
+def list_recent_run_messages(
+    session: Session,
+    run_limit: int,
+) -> list[Message]:
+    run_id_column = col(Message.run_id)
+
+    latest_runs_statement = (
+        select(run_id_column)
+        .where(run_id_column.is_not(None))
+        .group_by(run_id_column)
+        .order_by(func.max(Message.id).desc())
+        .limit(run_limit)
+    )
+    run_ids = [run_id for run_id in session.exec(latest_runs_statement).all()]
+    if not run_ids:
+        return []
+
+    statement = (
+        select(Message)
+        .where(col(Message.run_id).in_(run_ids))
+        .order_by(col(Message.id))
+    )
+    return list(session.exec(statement).all())
+
+
 def clear_messages(session: Session) -> None:
     session.exec(delete(Message))
     session.commit()
 
 
-def build_input(
-    session: Session,
-    window_size: int,
-) -> ResponseInputParam:
-    input: list[object] = [
-        {"role": "developer", "content": "你是一个车险助手"},
-    ]
-
-    statement = select(Message).order_by(col(Message.id).desc()).limit(window_size)
-    messages = session.exec(statement).all()
-
-    for message in reversed(messages):
-        if message.input:
-            input.extend(message.input)
-        if message.output:
-            input.extend(message.output)
-
-    return RESPONSE_INPUT_ADAPTER.validate_python(input)
-
-
-def save_user_message(session: Session, content: str) -> None:
+def save_user_message(session: Session, run_id: str, content: str) -> None:
     created_at = time()
     session.add(
         Message(
+            run_id=run_id,
             input=[{"role": "user", "content": content}],
             created_at=created_at,
             completed_at=created_at,
@@ -61,9 +66,11 @@ def save_user_message(session: Session, content: str) -> None:
 
 def save_response_message(
     session: Session,
+    run_id: str,
     response: Response,
 ) -> None:
     message = Message(
+        run_id=run_id,
         response_id=response.id,
         model=response.model,
         output=[
@@ -73,4 +80,24 @@ def save_response_message(
         completed_at=response.completed_at,
     )
     session.add(message)
+    session.commit()
+
+
+def save_tool_outputs(
+    session: Session,
+    run_id: str,
+    tool_outputs: list[FunctionCallOutput],
+) -> None:
+    created_at = time()
+    serialized_outputs: list[dict[str, Any]] = [
+        dict(tool_output) for tool_output in tool_outputs
+    ]
+    session.add(
+        Message(
+            run_id=run_id,
+            input=serialized_outputs,
+            created_at=created_at,
+            completed_at=created_at,
+        )
+    )
     session.commit()
