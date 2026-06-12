@@ -14,19 +14,16 @@ from ag_ui.core import (
     ThinkingTextMessageContentEvent,
     ThinkingTextMessageEndEvent,
     ThinkingTextMessageStartEvent,
-    ToolCallArgsEvent,
+    ToolCallStartEvent,
     ToolCallEndEvent,
     ToolCallResultEvent,
-    ToolCallStartEvent,
 )
 from openai import AsyncOpenAI
 from openai.types.responses import (
     Response,
     ResponseCompletedEvent,
-    ResponseCreatedEvent,
     ResponseErrorEvent,
     ResponseFailedEvent,
-    ResponseFunctionCallArgumentsDeltaEvent,
     ResponseFunctionToolCall,
     ResponseIncompleteEvent,
     ResponseInputParam,
@@ -135,12 +132,13 @@ async def chat_stream(
     session: Session,
 ) -> AsyncIterator[Event]:
     run_id = create_run_id()
-    run_started = False
 
     save_user_message(session, run_id, content)
 
     messages = list_recent_run_messages(session, settings.chat_history_run_limit)
     input = build_input(messages)
+
+    yield RunStartedEvent(thread_id=THREAD_ID, run_id=run_id)
 
     while True:
         stream = await client.responses.create(
@@ -153,59 +151,35 @@ async def chat_stream(
         )
 
         completed_event = None
-        tool_call_ids: dict[int, str] = {}
 
         async with stream:
             async for event in stream:
                 match event:
-                    case ResponseCreatedEvent() if not run_started:
-                        run_started = True
-                        yield RunStartedEvent(thread_id=THREAD_ID, run_id=run_id)
-                    case ResponseOutputItemAddedEvent(item=ResponseReasoningItem()):
-                        yield ThinkingStartEvent()
-                        yield ThinkingTextMessageStartEvent()
-                    case ResponseOutputItemAddedEvent(
-                        item=ResponseOutputMessage(id=message_id)
-                    ):
-                        yield TextMessageStartEvent(
-                            message_id=message_id,
-                            role="assistant",
-                        )
-                    case ResponseOutputItemAddedEvent(
-                        item=ResponseFunctionToolCall(
-                            call_id=call_id,
-                            name=name,
-                        ),
-                        output_index=output_index,
-                    ):
-                        tool_call_ids[output_index] = call_id
-                        yield ToolCallStartEvent(
-                            tool_call_id=call_id,
-                            tool_call_name=name,
-                        )
+                    case ResponseOutputItemAddedEvent(item=item):
+                        match item:
+                            case ResponseReasoningItem():
+                                yield ThinkingStartEvent()
+                                yield ThinkingTextMessageStartEvent()
+                            case ResponseOutputMessage(id=message_id):
+                                yield TextMessageStartEvent(
+                                    message_id=message_id,
+                                    role="assistant",
+                                )
                     case ResponseReasoningSummaryTextDeltaEvent(delta=delta):
                         yield ThinkingTextMessageContentEvent(delta=delta)
                     case ResponseReasoningSummaryTextDoneEvent():
                         yield ThinkingTextMessageEndEvent()
-                    case ResponseFunctionCallArgumentsDeltaEvent(
-                        output_index=output_index,
-                        delta=delta,
-                    ) if output_index in tool_call_ids:
-                        yield ToolCallArgsEvent(
-                            tool_call_id=tool_call_ids[output_index],
-                            delta=delta,
-                        )
                     case ResponseTextDeltaEvent(item_id=message_id, delta=delta):
                         yield TextMessageContentEvent(
                             message_id=message_id,
                             delta=delta,
                         )
-                    case ResponseOutputItemDoneEvent(item=ResponseReasoningItem()):
-                        yield ThinkingEndEvent()
-                    case ResponseOutputItemDoneEvent(
-                        item=ResponseOutputMessage(id=message_id)
-                    ):
-                        yield TextMessageEndEvent(message_id=message_id)
+                    case ResponseOutputItemDoneEvent(item=item):
+                        match item:
+                            case ResponseReasoningItem():
+                                yield ThinkingEndEvent()
+                            case ResponseOutputMessage(id=message_id):
+                                yield TextMessageEndEvent(message_id=message_id)
                     case ResponseErrorEvent(code=code, message=message):
                         yield RunErrorEvent(code=code, message=message)
                         return
@@ -230,6 +204,7 @@ async def chat_stream(
                         completed_event = event
 
         if completed_event is None:
+            yield RunErrorEvent(message="响应流结束但未收到完成事件")
             return
 
         response = completed_event.response
@@ -237,12 +212,12 @@ async def chat_stream(
 
         tool_calls = get_tool_calls(response)
         if tool_calls:
-            input.extend(
-                item.model_dump(mode="json", exclude_none=True)
-                for item in response.output
-            )
             tool_outputs: list[FunctionCallOutput] = []
             for tool_call in tool_calls:
+                yield ToolCallStartEvent(
+                    tool_call_id=tool_call.call_id,
+                    tool_call_name=tool_call.name,
+                )
                 result = call_tool(tool_call)
                 yield ToolCallEndEvent(tool_call_id=tool_call.call_id)
                 yield ToolCallResultEvent(
@@ -259,6 +234,10 @@ async def chat_stream(
                     }
                 )
             save_tool_outputs(session, run_id, tool_outputs)
+            input.extend(
+                item.model_dump(mode="json", exclude_none=True)
+                for item in response.output
+            )
             input.extend(tool_outputs)
             continue
 
