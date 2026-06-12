@@ -1,12 +1,3 @@
-from openai.types.responses import (
-    ResponseCompletedEvent,
-    ResponseCreatedEvent,
-    ResponseOutputItemAddedEvent,
-    ResponseOutputItemDoneEvent,
-    ResponseFunctionCallArgumentsDeltaEvent,
-    ResponseTextDeltaEvent,
-    ResponseReasoningSummaryTextDeltaEvent,
-)
 from pydantic import BaseModel, Field
 
 
@@ -16,14 +7,3 @@ class ChatRequest(BaseModel):
 
 class ChatResponse(BaseModel):
     reply: str
-
-
-ChatStreamEvent = (
-    ResponseCreatedEvent
-    | ResponseOutputItemAddedEvent
-    | ResponseReasoningSummaryTextDeltaEvent
-    | ResponseFunctionCallArgumentsDeltaEvent
-    | ResponseTextDeltaEvent
-    | ResponseOutputItemDoneEvent
-    | ResponseCompletedEvent
-)
