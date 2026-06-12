@@ -68,4 +68,6 @@ async def chat_stream(
     )
 
     async for event in stream:
-        yield ServerSentEvent(data=event)
+        yield ServerSentEvent(
+            raw_data=event.model_dump_json(by_alias=True, exclude_none=True)
+        )
