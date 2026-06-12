@@ -1,4 +1,5 @@
 from functools import lru_cache
+from pathlib import Path
 
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -15,6 +16,10 @@ class Settings(BaseSettings):
         alias="OPENAI_BASE_URL",
     )
     openai_model: str = Field(default="gpt-4o-mini", alias="OPENAI_MODEL")
+    developer_prompt_path: Path = Field(
+        default=Path("prompts/developer.md"),
+        alias="DEVELOPER_PROMPT_PATH",
+    )
     chat_history_run_limit: int = Field(
         default=10,
         alias="CHAT_HISTORY_RUN_LIMIT",

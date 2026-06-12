@@ -1,4 +1,5 @@
 from collections.abc import AsyncIterator
+from pathlib import Path
 from uuid import uuid4
 
 from ag_ui.core import (
@@ -58,9 +59,16 @@ def create_run_id() -> str:
     return f"run_{uuid4().hex}"
 
 
-def build_input(messages: list[Message]) -> ResponseInputParam:
+def load_developer_prompt(path: Path) -> str:
+    return path.read_text(encoding="utf-8").strip()
+
+
+def build_input(
+    messages: list[Message],
+    developer_prompt: str,
+) -> ResponseInputParam:
     input: list[object] = [
-        {"role": "developer", "content": "你是一个车险助手"},
+        {"role": "developer", "content": developer_prompt},
     ]
 
     for message in messages:
@@ -89,7 +97,8 @@ async def chat(
     save_user_message(session, run_id, content)
 
     messages = list_recent_run_messages(session, settings.chat_history_run_limit)
-    input = build_input(messages)
+    developer_prompt = load_developer_prompt(settings.developer_prompt_path)
+    input = build_input(messages, developer_prompt)
 
     while True:
         response = await client.responses.create(
@@ -136,7 +145,8 @@ async def chat_stream(
     save_user_message(session, run_id, content)
 
     messages = list_recent_run_messages(session, settings.chat_history_run_limit)
-    input = build_input(messages)
+    developer_prompt = load_developer_prompt(settings.developer_prompt_path)
+    input = build_input(messages, developer_prompt)
 
     yield RunStartedEvent(thread_id=THREAD_ID, run_id=run_id)
 
