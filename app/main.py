@@ -3,10 +3,10 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 
-from app.api import router
+from app.api.deps import build_openai_client
+from app.api.main import api_router
 from app.config import get_settings
 from app.database import create_db_and_tables
-from app.deps import build_openai_client
 
 
 @asynccontextmanager
@@ -25,4 +25,4 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
 
 app = FastAPI(title="学习车险智能体", lifespan=lifespan)
-app.include_router(router)
+app.include_router(api_router)
