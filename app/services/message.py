@@ -24,6 +24,7 @@ def list_messages(
 def list_recent_run_messages(
     session: Session,
     run_limit: int,
+    cursor: int | None = None,
 ) -> list[Message]:
     run_id_column = col(Message.run_id)
 
@@ -31,9 +32,16 @@ def list_recent_run_messages(
         select(run_id_column)
         .where(run_id_column.is_not(None))
         .group_by(run_id_column)
-        .order_by(func.max(Message.id).desc())
-        .limit(run_limit)
     )
+    if cursor is not None:
+        latest_runs_statement = latest_runs_statement.having(
+            func.max(Message.id) < cursor
+        )
+
+    latest_runs_statement = latest_runs_statement.order_by(
+        func.max(Message.id).desc()
+    ).limit(run_limit)
+
     run_ids = [run_id for run_id in session.exec(latest_runs_statement).all()]
     if not run_ids:
         return []
