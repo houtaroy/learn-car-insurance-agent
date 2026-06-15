@@ -25,6 +25,10 @@ class Settings(BaseSettings):
         alias="CHAT_HISTORY_RUN_LIMIT",
         gt=0,
     )
+    oss_access_key_id: str = Field(default="", alias="OSS_ACCESS_KEY_ID")
+    oss_access_key_secret: str = Field(default="", alias="OSS_ACCESS_KEY_SECRET")
+    oss_region: str = Field(default="", alias="OSS_REGION")
+    oss_bucket: str = Field(default="", alias="OSS_BUCKET")
 
     model_config = SettingsConfigDict(
         env_file=".env",

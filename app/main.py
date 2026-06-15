@@ -3,7 +3,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 
-from app.api.deps import build_openai_client
+from app.api.deps import build_openai_client, build_oss_client
 from app.api.main import api_router
 from app.config import get_settings
 from app.database import create_db_and_tables
@@ -17,6 +17,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     create_db_and_tables()
 
     app.state.openai_client = build_openai_client(settings)
+    app.state.oss_client = build_oss_client(settings)
 
     try:
         yield
