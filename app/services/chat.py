@@ -4,9 +4,13 @@ from uuid import uuid4
 
 from ag_ui.core import (
     Event,
+    ImageInputContent,
+    InputContent,
+    InputContentUrlSource,
     RunErrorEvent,
     RunFinishedEvent,
     RunStartedEvent,
+    TextInputContent,
     TextMessageContentEvent,
     TextMessageEndEvent,
     TextMessageStartEvent,
@@ -53,6 +57,7 @@ from app.services.tool import TOOLS, call_tool
 
 RESPONSE_INPUT_ADAPTER = TypeAdapter(ResponseInputParam)
 THREAD_ID = "thread_1"
+UserContent = str | list[InputContent]
 
 
 def create_run_id() -> str:
@@ -83,6 +88,37 @@ def build_input(
     return RESPONSE_INPUT_ADAPTER.validate_python(input)
 
 
+def build_current_input(content: UserContent) -> list[dict[str, object]]:
+    return [_build_user_content_input(content)]
+
+
+def _build_user_content_input(content: UserContent) -> dict[str, object]:
+    match content:
+        case str() as content:
+            return {"role": "user", "content": content}
+        case list() as content:
+            return {
+                "role": "user",
+                "content": [_build_input_content_part(item) for item in content],
+            }
+
+
+def _build_input_content_part(item: object) -> dict[str, object]:
+    match item:
+        case TextInputContent(text=text):
+            return {"type": "input_text", "text": text}
+        case ImageInputContent(source=InputContentUrlSource(value=image_url)):
+            return {
+                "type": "input_image",
+                "image_url": image_url,
+                "detail": "auto",
+            }
+        case ImageInputContent():
+            raise ValueError("图片输入仅支持 URL 来源")
+        case _:
+            raise ValueError("用户消息内容仅支持文本和图片")
+
+
 def get_tool_calls(response: Response) -> list[ResponseFunctionToolCall]:
     return [
         item for item in response.output if isinstance(item, ResponseFunctionToolCall)
@@ -90,7 +126,7 @@ def get_tool_calls(response: Response) -> list[ResponseFunctionToolCall]:
 
 
 async def chat(
-    content: str,
+    content: UserContent,
     settings: Settings,
     client: AsyncOpenAI,
     session: Session,
@@ -99,7 +135,7 @@ async def chat(
 
     developer_prompt = load_developer_prompt(settings.developer_prompt_path)
     messages = list_recent_run_messages(session, settings.chat_history_run_limit)
-    current_input: list[dict[str, object]] = [{"role": "user", "content": content}]
+    current_input = build_current_input(content)
     save_input_message(session, run_id, current_input)
     input = build_input(developer_prompt, messages, current_input)
 
@@ -138,7 +174,7 @@ async def chat(
 
 
 async def chat_stream(
-    content: str,
+    content: UserContent,
     settings: Settings,
     client: AsyncOpenAI,
     session: Session,
@@ -147,7 +183,7 @@ async def chat_stream(
 
     developer_prompt = load_developer_prompt(settings.developer_prompt_path)
     messages = list_recent_run_messages(session, settings.chat_history_run_limit)
-    current_input: list[dict[str, object]] = [{"role": "user", "content": content}]
+    current_input = build_current_input(content)
     save_input_message(session, run_id, current_input)
     input = build_input(developer_prompt, messages, current_input)
 

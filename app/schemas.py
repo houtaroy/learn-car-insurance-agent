@@ -1,8 +1,9 @@
-from pydantic import BaseModel, Field
+from ag_ui.core import InputContent
+from pydantic import BaseModel
 
 
 class ChatRequest(BaseModel):
-    message: str = Field(min_length=1)
+    content: str | list[InputContent]
 
 
 class ChatResponse(BaseModel):

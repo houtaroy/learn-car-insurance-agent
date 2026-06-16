@@ -23,11 +23,16 @@ async def chat(
 ) -> ChatResponse:
     try:
         response = await chat_service.chat(
-            request.message,
+            request.content,
             settings,
             client,
             session,
         )
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(exc),
+        ) from exc
     except APIError as exc:
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
@@ -44,14 +49,19 @@ async def chat_stream(
     client: AsyncOpenAI = Depends(get_openai_client),
     session: Session = Depends(get_session),
 ) -> AsyncIterable[ServerSentEvent]:
-    stream = chat_service.chat_stream(
-        request.message,
-        settings,
-        client,
-        session,
-    )
-
-    async for event in stream:
-        yield ServerSentEvent(
-            raw_data=event.model_dump_json(by_alias=True, exclude_none=True)
+    try:
+        stream = chat_service.chat_stream(
+            request.content,
+            settings,
+            client,
+            session,
         )
+        async for event in stream:
+            yield ServerSentEvent(
+                raw_data=event.model_dump_json(by_alias=True, exclude_none=True)
+            )
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(exc),
+        ) from exc
