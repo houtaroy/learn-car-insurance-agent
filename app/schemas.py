@@ -6,9 +6,5 @@ class ChatRequest(BaseModel):
     content: str | list[InputContent]
 
 
-class ChatResponse(BaseModel):
-    reply: str
-
-
 class FileUploadResponse(BaseModel):
     url: str
