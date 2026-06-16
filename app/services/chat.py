@@ -44,9 +44,9 @@ from app.config import Settings
 from app.models import Message
 from app.services.message import (
     list_recent_run_messages,
+    save_input_message,
     save_response_message,
     save_tool_outputs,
-    save_user_message,
 )
 from app.services.tool import TOOLS, call_tool
 
@@ -64,8 +64,9 @@ def load_developer_prompt(path: Path) -> str:
 
 
 def build_input(
-    messages: list[Message],
     developer_prompt: str,
+    messages: list[Message],
+    current_input: list[dict[str, object]],
 ) -> ResponseInputParam:
     input: list[object] = [
         {"role": "developer", "content": developer_prompt},
@@ -76,6 +77,8 @@ def build_input(
             input.extend(message.input)
         if message.output:
             input.extend(message.output)
+
+    input.extend(current_input)
 
     return RESPONSE_INPUT_ADAPTER.validate_python(input)
 
@@ -94,11 +97,11 @@ async def chat(
 ) -> Response:
     run_id = create_run_id()
 
-    save_user_message(session, run_id, content)
-
-    messages = list_recent_run_messages(session, settings.chat_history_run_limit)
     developer_prompt = load_developer_prompt(settings.developer_prompt_path)
-    input = build_input(messages, developer_prompt)
+    messages = list_recent_run_messages(session, settings.chat_history_run_limit)
+    current_input: list[dict[str, object]] = [{"role": "user", "content": content}]
+    save_input_message(session, run_id, current_input)
+    input = build_input(developer_prompt, messages, current_input)
 
     while True:
         response = await client.responses.create(
@@ -142,11 +145,11 @@ async def chat_stream(
 ) -> AsyncIterator[Event]:
     run_id = create_run_id()
 
-    save_user_message(session, run_id, content)
-
-    messages = list_recent_run_messages(session, settings.chat_history_run_limit)
     developer_prompt = load_developer_prompt(settings.developer_prompt_path)
-    input = build_input(messages, developer_prompt)
+    messages = list_recent_run_messages(session, settings.chat_history_run_limit)
+    current_input: list[dict[str, object]] = [{"role": "user", "content": content}]
+    save_input_message(session, run_id, current_input)
+    input = build_input(developer_prompt, messages, current_input)
 
     yield RunStartedEvent(thread_id=THREAD_ID, run_id=run_id)
 

@@ -59,12 +59,16 @@ def clear_messages(session: Session) -> None:
     session.commit()
 
 
-def save_user_message(session: Session, run_id: str, content: str) -> None:
+def save_input_message(
+    session: Session,
+    run_id: str,
+    input: list[dict[str, Any]],
+) -> None:
     created_at = time()
     session.add(
         Message(
             run_id=run_id,
-            input=[{"role": "user", "content": content}],
+            input=input,
             created_at=created_at,
             completed_at=created_at,
         )
