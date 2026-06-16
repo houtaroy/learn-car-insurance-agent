@@ -29,9 +29,7 @@ def list_recent_run_messages(
     run_id_column = col(Message.run_id)
 
     latest_runs_statement = (
-        select(run_id_column)
-        .where(run_id_column.is_not(None))
-        .group_by(run_id_column)
+        select(run_id_column).where(run_id_column.is_not(None)).group_by(run_id_column)
     )
     if cursor is not None:
         latest_runs_statement = latest_runs_statement.having(
@@ -95,14 +93,14 @@ def save_response_message(
     session.commit()
 
 
-def save_tool_outputs(
+def save_function_call_outputs(
     session: Session,
     run_id: str,
-    tool_outputs: list[FunctionCallOutput],
+    outputs: list[FunctionCallOutput],
 ) -> None:
     created_at = time()
     serialized_outputs: list[dict[str, Any]] = [
-        dict(tool_output) for tool_output in tool_outputs
+        dict(tool_output) for tool_output in outputs
     ]
     session.add(
         Message(

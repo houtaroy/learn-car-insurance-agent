@@ -14,15 +14,15 @@ from app.services import chat as chat_service
 router = APIRouter(prefix="/chat", tags=["chat"])
 
 
-@router.post("/stream", response_class=EventSourceResponse)
-async def chat_stream(
+@router.post("", response_class=EventSourceResponse)
+async def chat(
     request: ChatRequest,
     settings: Settings = Depends(get_app_settings),
     client: AsyncOpenAI = Depends(get_openai_client),
     session: Session = Depends(get_session),
 ) -> AsyncIterable[ServerSentEvent]:
     try:
-        stream = chat_service.chat_stream(
+        stream = chat_service.chat(
             request.content,
             settings,
             client,
