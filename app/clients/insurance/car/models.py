@@ -27,3 +27,9 @@ class Quotation(BaseModel):
 class UnderwritingPolicy(BaseModel):
     id: str
     payment_qr_code_url: str
+
+
+class Policy(BaseModel):
+    id: str
+    name: str
+    url: str

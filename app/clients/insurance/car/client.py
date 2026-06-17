@@ -1,11 +1,20 @@
 from decimal import Decimal
 
+from app.clients.insurance.car.models import Policy
 from app.clients.insurance.car.models import Quotation
 from app.clients.insurance.car.models import UnderwritingPolicy
 
 PAYMENT_QR_CODE_URL = (
     "https://car-insurance-agent.oss-cn-beijing.aliyuncs.com/"
     "2026/06/17/03e35696dc47490bbe639c2578143e87.png"
+)
+COMMERCIAL_POLICY_URL = (
+    "https://car-insurance-agent.oss-cn-beijing.aliyuncs.com/"
+    "2026/06/17/6ba275f5e158413286f7c9e62d721f9e.jpg"
+)
+COMPULSORY_POLICY_URL = (
+    "https://car-insurance-agent.oss-cn-beijing.aliyuncs.com/"
+    "2026/06/17/5d86e19d457b40868c5fc531cfcdf9cc.jpg"
 )
 
 
@@ -53,3 +62,18 @@ def underwrite(quotation_id: str) -> UnderwritingPolicy:
 
 def query_payment_result(underwriting_policy_id: str) -> bool:
     return True
+
+
+def query_policies(license_plate: str) -> list[Policy]:
+    return [
+        Policy(
+            id=f"{license_plate}-commercial",
+            name="商业险",
+            url=COMMERCIAL_POLICY_URL,
+        ),
+        Policy(
+            id=f"{license_plate}-compulsory",
+            name="交强险",
+            url=COMPULSORY_POLICY_URL,
+        ),
+    ]
