@@ -53,11 +53,11 @@ from app.services.agent import FunctionCallOutputs, loop
 
 
 RESPONSE_INPUT_ADAPTER = TypeAdapter(ResponseInputParam)
-THREAD_ID = "thread_1"
 UserContent = str | list[InputContent]
 
 
 async def chat(
+    conversation_id: str,
     content: UserContent,
     settings: Settings,
     client: AsyncOpenAI,
@@ -66,12 +66,16 @@ async def chat(
     run_id = create_run_id()
 
     developer_prompt = load_developer_prompt(settings.developer_prompt_path)
-    messages = list_recent_run_messages(session, settings.chat_history_run_limit)
+    messages = list_recent_run_messages(
+        session,
+        conversation_id,
+        settings.chat_history_run_limit,
+    )
     current_input = build_current_input(content)
-    save_input_message(session, run_id, current_input)
+    save_input_message(session, conversation_id, run_id, current_input)
     input = build_input(developer_prompt, messages, current_input)
 
-    yield RunStartedEvent(thread_id=THREAD_ID, run_id=run_id)
+    yield RunStartedEvent(thread_id=conversation_id, run_id=run_id)
 
     async for event in loop(input, settings, client):
         match event:
@@ -87,7 +91,7 @@ async def chat(
             case ToolCallStartEvent() | ToolCallEndEvent() | ToolCallResultEvent():
                 yield event
             case FunctionCallOutputs(outputs=outputs):
-                save_function_call_outputs(session, run_id, outputs)
+                save_function_call_outputs(session, conversation_id, run_id, outputs)
             case ResponseOutputItemAddedEvent(
                 item=ResponseOutputMessage(id=message_id)
             ):
@@ -103,7 +107,7 @@ async def chat(
             case ResponseOutputItemDoneEvent(item=ResponseOutputMessage(id=message_id)):
                 yield TextMessageEndEvent(message_id=message_id)
             case ResponseCompletedEvent(response=response):
-                save_response_message(session, run_id, response)
+                save_response_message(session, conversation_id, run_id, response)
             case ResponseErrorEvent(code=code, message=message):
                 yield RunErrorEvent(code=code, message=message)
                 return
@@ -123,7 +127,7 @@ async def chat(
                 )
                 return
 
-    yield RunFinishedEvent(thread_id=THREAD_ID, run_id=run_id)
+    yield RunFinishedEvent(thread_id=conversation_id, run_id=run_id)
 
 
 def create_run_id() -> str:
