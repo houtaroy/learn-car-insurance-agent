@@ -23,13 +23,19 @@ def list_messages(
 
 def list_recent_run_messages(
     session: Session,
+    conversation_id: str,
     run_limit: int,
     cursor: int | None = None,
 ) -> list[Message]:
     run_id_column = col(Message.run_id)
 
     latest_runs_statement = (
-        select(run_id_column).where(run_id_column.is_not(None)).group_by(run_id_column)
+        select(run_id_column)
+        .where(
+            col(Message.conversation_id) == conversation_id,
+            run_id_column.is_not(None),
+        )
+        .group_by(run_id_column)
     )
     if cursor is not None:
         latest_runs_statement = latest_runs_statement.having(
@@ -46,7 +52,10 @@ def list_recent_run_messages(
 
     statement = (
         select(Message)
-        .where(col(Message.run_id).in_(run_ids))
+        .where(
+            col(Message.conversation_id) == conversation_id,
+            col(Message.run_id).in_(run_ids),
+        )
         .order_by(col(Message.id))
     )
     return list(session.exec(statement).all())
@@ -59,12 +68,14 @@ def clear_messages(session: Session) -> None:
 
 def save_input_message(
     session: Session,
+    conversation_id: str,
     run_id: str,
     input: list[dict[str, Any]],
 ) -> None:
     created_at = time()
     session.add(
         Message(
+            conversation_id=conversation_id,
             run_id=run_id,
             input=input,
             created_at=created_at,
@@ -76,10 +87,12 @@ def save_input_message(
 
 def save_response_message(
     session: Session,
+    conversation_id: str,
     run_id: str,
     response: Response,
 ) -> None:
     message = Message(
+        conversation_id=conversation_id,
         run_id=run_id,
         response_id=response.id,
         model=response.model,
@@ -95,6 +108,7 @@ def save_response_message(
 
 def save_function_call_outputs(
     session: Session,
+    conversation_id: str,
     run_id: str,
     outputs: list[FunctionCallOutput],
 ) -> None:
@@ -104,6 +118,7 @@ def save_function_call_outputs(
     ]
     session.add(
         Message(
+            conversation_id=conversation_id,
             run_id=run_id,
             input=serialized_outputs,
             created_at=created_at,

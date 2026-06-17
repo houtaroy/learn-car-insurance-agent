@@ -21,10 +21,11 @@ UserContent = str | list[InputContent]
 
 def list_conversation_messages(
     session: Session,
+    conversation_id: str,
     run_limit: int,
     cursor: int | None = None,
 ) -> list[AGUIMessage]:
-    records = list_recent_run_messages(session, run_limit, cursor)
+    records = list_recent_run_messages(session, conversation_id, run_limit, cursor)
     messages: list[AGUIMessage] = []
 
     for record in records:
