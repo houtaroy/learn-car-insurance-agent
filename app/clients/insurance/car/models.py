@@ -22,3 +22,8 @@ class Quotation(BaseModel):
     @property
     def total_premium(self) -> Decimal:
         return self.compulsory_premium + self.commercial_premium
+
+
+class UnderwritingPolicy(BaseModel):
+    id: str
+    payment_qr_code_url: str

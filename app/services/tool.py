@@ -4,7 +4,9 @@ from openai.types.responses import ResponseFunctionToolCall
 from openai.types.responses.tool_param import ToolParam
 
 from app.clients.insurance.car import Quotation
+from app.clients.insurance.car import UnderwritingPolicy
 from app.clients.insurance.car import quote as quote_car
+from app.clients.insurance.car import underwrite as underwrite_car
 
 TOOLS: list[ToolParam] = [
     {
@@ -27,7 +29,7 @@ TOOLS: list[ToolParam] = [
     {
         "type": "function",
         "name": "quote",
-        "description": "根据车牌号为车辆进行保险报价, 结果为报价单列表",
+        "description": "根据车牌号为车辆进行报价, 结果为报价单列表",
         "parameters": {
             "type": "object",
             "properties": {
@@ -37,6 +39,23 @@ TOOLS: list[ToolParam] = [
                 },
             },
             "required": ["license_plate"],
+            "additionalProperties": False,
+        },
+        "strict": True,
+    },
+    {
+        "type": "function",
+        "name": "underwrite",
+        "description": "使用投保单id进行核保, 返回核保单",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "quotation_id": {
+                    "type": "string",
+                    "description": "来自报价结果中的投保单id",
+                },
+            },
+            "required": ["quotation_id"],
             "additionalProperties": False,
         },
         "strict": True,
@@ -54,6 +73,11 @@ def quote(license_plate: str) -> list[Quotation]:
     return quote_car(license_plate)
 
 
+def underwrite(quotation_id: str) -> UnderwritingPolicy:
+    """使用投保单id进行核保, 返回核保单"""
+    return underwrite_car(quotation_id)
+
+
 def call_tool(tool_call: ResponseFunctionToolCall) -> str:
     arguments = json.loads(tool_call.arguments)
 
@@ -66,5 +90,9 @@ def call_tool(tool_call: ResponseFunctionToolCall) -> str:
             [quotation.model_dump(mode="json") for quotation in quotations],
             ensure_ascii=False,
         )
+
+    if tool_call.name == "underwrite":
+        underwriting_policy = underwrite(arguments["quotation_id"])
+        return underwriting_policy.model_dump_json()
 
     raise ValueError(f"未知工具：{tool_call.name}")

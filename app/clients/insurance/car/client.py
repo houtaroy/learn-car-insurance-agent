@@ -1,6 +1,12 @@
 from decimal import Decimal
 
 from app.clients.insurance.car.models import Quotation
+from app.clients.insurance.car.models import UnderwritingPolicy
+
+PAYMENT_QR_CODE_URL = (
+    "https://car-insurance-agent.oss-cn-beijing.aliyuncs.com/"
+    "2026/06/17/03e35696dc47490bbe639c2578143e87.png"
+)
 
 
 def quote(license_plate: str) -> list[Quotation]:
@@ -36,3 +42,10 @@ def quote(license_plate: str) -> list[Quotation]:
             vehicle_tax=Decimal("300"),
         ),
     ]
+
+
+def underwrite(quotation_id: str) -> UnderwritingPolicy:
+    return UnderwritingPolicy(
+        id=f"{quotation_id}-underwriting",
+        payment_qr_code_url=PAYMENT_QR_CODE_URL,
+    )
