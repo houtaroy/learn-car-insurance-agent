@@ -79,18 +79,18 @@ def clear_messages(
     session.commit()
 
 
-def save_input_message(
+def save_user_input(
     session: Session,
     conversation_id: str,
     run_id: str,
-    input: list[dict[str, Any]],
+    user_input: list[dict[str, Any]],
 ) -> None:
     created_at = time()
     session.add(
         Message(
             conversation_id=conversation_id,
             run_id=run_id,
-            input=input,
+            input=user_input,
             created_at=created_at,
             completed_at=created_at,
         )
@@ -98,7 +98,7 @@ def save_input_message(
     session.commit()
 
 
-def save_response_message(
+def save_assistant_response(
     session: Session,
     conversation_id: str,
     run_id: str,

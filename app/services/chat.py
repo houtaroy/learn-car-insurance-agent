@@ -45,8 +45,8 @@ from app.config import Settings
 from app.models import Message
 from app.services.message import (
     list_recent_run_messages,
-    save_input_message,
-    save_response_message,
+    save_user_input,
+    save_assistant_response,
     save_function_call_outputs,
 )
 from app.services.agent import FunctionCallOutputs, loop
@@ -71,9 +71,9 @@ async def chat(
         conversation_id,
         settings.chat_history_run_limit,
     )
-    current_input = build_current_input(content)
-    save_input_message(session, conversation_id, run_id, current_input)
-    input = build_input(developer_prompt, messages, current_input)
+    user_input = build_user_input(content)
+    save_user_input(session, conversation_id, run_id, user_input)
+    input = build_input(developer_prompt, messages, user_input)
 
     yield RunStartedEvent(thread_id=conversation_id, run_id=run_id)
 
@@ -107,7 +107,7 @@ async def chat(
             case ResponseOutputItemDoneEvent(item=ResponseOutputMessage(id=message_id)):
                 yield TextMessageEndEvent(message_id=message_id)
             case ResponseCompletedEvent(response=response):
-                save_response_message(session, conversation_id, run_id, response)
+                save_assistant_response(session, conversation_id, run_id, response)
             case ResponseErrorEvent(code=code, message=message):
                 yield RunErrorEvent(code=code, message=message)
                 return
@@ -141,7 +141,7 @@ def load_developer_prompt(path: Path) -> str:
 def build_input(
     developer_prompt: str,
     messages: list[Message],
-    current_input: list[dict[str, object]],
+    user_input: list[dict[str, object]],
 ) -> ResponseInputParam:
     response_input: list[object] = [
         {"role": "developer", "content": developer_prompt},
@@ -153,12 +153,12 @@ def build_input(
         if message.output:
             response_input.extend(message.output)
 
-    response_input.extend(current_input)
+    response_input.extend(user_input)
 
     return RESPONSE_INPUT_ADAPTER.validate_python(response_input)
 
 
-def build_current_input(content: UserContent) -> list[dict[str, object]]:
+def build_user_input(content: UserContent) -> list[dict[str, object]]:
     return [_build_user_content_input(content)]
 
 
