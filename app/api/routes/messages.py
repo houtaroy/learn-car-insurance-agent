@@ -12,12 +12,17 @@ router = APIRouter(prefix="/messages", tags=["messages"])
 @router.get("", response_model=list[Message])
 def list_messages(
     cursor: int | None = None,
+    conversation_id: str | None = None,
     limit: int = Query(default=20, ge=1, le=100),
     session: Session = Depends(get_session),
 ) -> list[Message]:
-    return message_service.list_messages(session, cursor, limit)
+    return message_service.list_messages(session, cursor, limit, conversation_id)
 
 
 @router.delete("", status_code=status.HTTP_204_NO_CONTENT)
-def clear_messages(session: Session = Depends(get_session)) -> None:
-    message_service.clear_messages(session)
+def clear_messages(
+    conversation_id: str | None = None,
+    cursor: int | None = Query(default=None, ge=1),
+    session: Session = Depends(get_session),
+) -> None:
+    message_service.clear_messages(session, conversation_id, cursor)

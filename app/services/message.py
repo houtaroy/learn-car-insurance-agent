@@ -13,8 +13,11 @@ def list_messages(
     session: Session,
     cursor: int | None,
     limit: int,
+    conversation_id: str | None = None,
 ) -> list[Message]:
     statement = select(Message).order_by(col(Message.id).desc()).limit(limit)
+    if conversation_id is not None:
+        statement = statement.where(col(Message.conversation_id) == conversation_id)
     if cursor is not None:
         statement = statement.where(col(Message.id) < cursor)
 
@@ -61,8 +64,18 @@ def list_recent_run_messages(
     return list(session.exec(statement).all())
 
 
-def clear_messages(session: Session) -> None:
-    session.exec(delete(Message))
+def clear_messages(
+    session: Session,
+    conversation_id: str | None = None,
+    cursor: int | None = None,
+) -> None:
+    statement = delete(Message)
+    if conversation_id is not None:
+        statement = statement.where(col(Message.conversation_id) == conversation_id)
+        if cursor is not None:
+            statement = statement.where(col(Message.id) >= cursor)
+
+    session.exec(statement)
     session.commit()
 
 
