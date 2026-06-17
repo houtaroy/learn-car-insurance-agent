@@ -3,12 +3,14 @@ import json
 from openai.types.responses import ResponseFunctionToolCall
 from openai.types.responses.tool_param import ToolParam
 
+from app.clients.insurance.car import Policy
 from app.clients.insurance.car import Quotation
 from app.clients.insurance.car import UnderwritingPolicy
 from app.clients.insurance.car import quote as client_quote
 from app.clients.insurance.car import (
     query_payment_result as client_query_payment_result,
 )
+from app.clients.insurance.car import query_policies as client_query_policies
 from app.clients.insurance.car import underwrite as client_underwrite
 
 TOOLS: list[ToolParam] = [
@@ -80,6 +82,23 @@ TOOLS: list[ToolParam] = [
         },
         "strict": True,
     },
+    {
+        "type": "function",
+        "name": "query_policies",
+        "description": "根据车牌号查询已出具的保单, 结果为保单对象列表",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "license_plate": {
+                    "type": "string",
+                    "description": "车牌号, 例如: 京A12345",
+                },
+            },
+            "required": ["license_plate"],
+            "additionalProperties": False,
+        },
+        "strict": True,
+    },
 ]
 
 
@@ -103,6 +122,11 @@ def query_payment_result(underwriting_policy_id: str) -> bool:
     return client_query_payment_result(underwriting_policy_id)
 
 
+def query_policies(license_plate: str) -> list[Policy]:
+    """根据车牌号查询已出具的保单, 结果为保单对象列表"""
+    return client_query_policies(license_plate)
+
+
 def call_tool(tool_call: ResponseFunctionToolCall) -> str:
     arguments = json.loads(tool_call.arguments)
 
@@ -123,5 +147,12 @@ def call_tool(tool_call: ResponseFunctionToolCall) -> str:
     if tool_call.name == "query_payment_result":
         is_paid = query_payment_result(arguments["underwriting_policy_id"])
         return json.dumps(is_paid, ensure_ascii=False)
+
+    if tool_call.name == "query_policies":
+        policies = query_policies(arguments["license_plate"])
+        return json.dumps(
+            [policy.model_dump(mode="json") for policy in policies],
+            ensure_ascii=False,
+        )
 
     raise ValueError(f"未知工具：{tool_call.name}")
