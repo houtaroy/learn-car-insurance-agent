@@ -2,7 +2,13 @@ from collections.abc import AsyncIterator
 from dataclasses import dataclass
 from uuid import uuid4
 
-from ag_ui.core import Event, ToolCallEndEvent, ToolCallResultEvent, ToolCallStartEvent
+from ag_ui.core import (
+    Event,
+    RunErrorEvent,
+    ToolCallEndEvent,
+    ToolCallResultEvent,
+    ToolCallStartEvent,
+)
 from openai import AsyncOpenAI
 from openai.types.responses import (
     ResponseCompletedEvent,
@@ -32,7 +38,17 @@ async def loop(
     settings: Settings,
     client: AsyncOpenAI,
 ) -> AsyncIterator[AgentLoopEvent]:
+    round_count = 0
+
     while True:
+        round_count += 1
+        if round_count > settings.agent_loop_max_rounds:
+            yield RunErrorEvent(
+                code="agent_loop_max_rounds_exceeded",
+                message=f"已超过最大轮次限制：{settings.agent_loop_max_rounds}",
+            )
+            return
+
         stream = await client.responses.create(
             model=settings.openai_model,
             reasoning={"effort": "minimal"},

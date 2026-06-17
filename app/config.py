@@ -25,6 +25,11 @@ class Settings(BaseSettings):
         alias="CHAT_HISTORY_RUN_LIMIT",
         gt=0,
     )
+    agent_loop_max_rounds: int = Field(
+        default=10,
+        alias="AGENT_LOOP_MAX_ROUNDS",
+        gt=0,
+    )
     oss_access_key_id: str = Field(default="", alias="OSS_ACCESS_KEY_ID")
     oss_access_key_secret: str = Field(default="", alias="OSS_ACCESS_KEY_SECRET")
     oss_region: str = Field(default="", alias="OSS_REGION")

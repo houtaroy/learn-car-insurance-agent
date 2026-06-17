@@ -126,6 +126,9 @@ async def chat(
                     message=(f"响应未完成：{reason}" if reason else "响应未完成"),
                 )
                 return
+            case RunErrorEvent():
+                yield event
+                return
 
     yield RunFinishedEvent(thread_id=conversation_id, run_id=run_id)
 
