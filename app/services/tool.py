@@ -5,8 +5,11 @@ from openai.types.responses.tool_param import ToolParam
 
 from app.clients.insurance.car import Quotation
 from app.clients.insurance.car import UnderwritingPolicy
-from app.clients.insurance.car import quote as quote_car
-from app.clients.insurance.car import underwrite as underwrite_car
+from app.clients.insurance.car import quote as client_quote
+from app.clients.insurance.car import (
+    query_payment_result as client_query_payment_result,
+)
+from app.clients.insurance.car import underwrite as client_underwrite
 
 TOOLS: list[ToolParam] = [
     {
@@ -60,6 +63,23 @@ TOOLS: list[ToolParam] = [
         },
         "strict": True,
     },
+    {
+        "type": "function",
+        "name": "query_payment_result",
+        "description": "使用核保单id查询支付结果, 返回是否支付成功",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "underwriting_policy_id": {
+                    "type": "string",
+                    "description": "来自核保结果中的核保单id",
+                },
+            },
+            "required": ["underwriting_policy_id"],
+            "additionalProperties": False,
+        },
+        "strict": True,
+    },
 ]
 
 
@@ -70,12 +90,17 @@ def get_weather(location: str) -> str:
 
 def quote(license_plate: str) -> list[Quotation]:
     """根据车牌号为车辆进行保险报价, 结果为报价单列表"""
-    return quote_car(license_plate)
+    return client_quote(license_plate)
 
 
 def underwrite(quotation_id: str) -> UnderwritingPolicy:
     """使用投保单id进行核保, 返回核保单"""
-    return underwrite_car(quotation_id)
+    return client_underwrite(quotation_id)
+
+
+def query_payment_result(underwriting_policy_id: str) -> bool:
+    """使用核保单id查询支付结果, 返回是否支付成功"""
+    return client_query_payment_result(underwriting_policy_id)
 
 
 def call_tool(tool_call: ResponseFunctionToolCall) -> str:
@@ -94,5 +119,9 @@ def call_tool(tool_call: ResponseFunctionToolCall) -> str:
     if tool_call.name == "underwrite":
         underwriting_policy = underwrite(arguments["quotation_id"])
         return underwriting_policy.model_dump_json()
+
+    if tool_call.name == "query_payment_result":
+        is_paid = query_payment_result(arguments["underwriting_policy_id"])
+        return json.dumps(is_paid, ensure_ascii=False)
 
     raise ValueError(f"未知工具：{tool_call.name}")

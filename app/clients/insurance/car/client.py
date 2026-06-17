@@ -49,3 +49,7 @@ def underwrite(quotation_id: str) -> UnderwritingPolicy:
         id=f"{quotation_id}-underwriting",
         payment_qr_code_url=PAYMENT_QR_CODE_URL,
     )
+
+
+def query_payment_result(underwriting_policy_id: str) -> bool:
+    return True
