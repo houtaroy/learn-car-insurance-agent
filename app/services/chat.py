@@ -4,28 +4,30 @@ from uuid import uuid4
 
 from ag_ui.core import (
     Event,
+    ImageInputContent,
+    InputContent,
+    InputContentUrlSource,
     RunErrorEvent,
-    RunFinishedEvent,
     RunStartedEvent,
+    TextInputContent,
     TextMessageContentEvent,
     TextMessageEndEvent,
     TextMessageStartEvent,
+    RunFinishedEvent,
     ThinkingEndEvent,
     ThinkingStartEvent,
     ThinkingTextMessageContentEvent,
     ThinkingTextMessageEndEvent,
     ThinkingTextMessageStartEvent,
-    ToolCallStartEvent,
     ToolCallEndEvent,
     ToolCallResultEvent,
+    ToolCallStartEvent,
 )
 from openai import AsyncOpenAI
 from openai.types.responses import (
-    Response,
     ResponseCompletedEvent,
     ResponseErrorEvent,
     ResponseFailedEvent,
-    ResponseFunctionToolCall,
     ResponseIncompleteEvent,
     ResponseInputParam,
     ResponseOutputItemAddedEvent,
@@ -36,7 +38,6 @@ from openai.types.responses import (
     ResponseReasoningSummaryTextDoneEvent,
     ResponseTextDeltaEvent,
 )
-from openai.types.responses.response_input_param import FunctionCallOutput
 from pydantic import TypeAdapter
 from sqlmodel import Session
 
@@ -44,15 +45,89 @@ from app.config import Settings
 from app.models import Message
 from app.services.message import (
     list_recent_run_messages,
+    save_input_message,
     save_response_message,
-    save_tool_outputs,
-    save_user_message,
+    save_function_call_outputs,
 )
-from app.services.tool import TOOLS, call_tool
+from app.services.agent import FunctionCallOutputs, loop
 
 
 RESPONSE_INPUT_ADAPTER = TypeAdapter(ResponseInputParam)
-THREAD_ID = "thread_1"
+UserContent = str | list[InputContent]
+
+
+async def chat(
+    conversation_id: str,
+    content: UserContent,
+    settings: Settings,
+    client: AsyncOpenAI,
+    session: Session,
+) -> AsyncIterator[Event]:
+    run_id = create_run_id()
+
+    developer_prompt = load_developer_prompt(settings.developer_prompt_path)
+    messages = list_recent_run_messages(
+        session,
+        conversation_id,
+        settings.chat_history_run_limit,
+    )
+    current_input = build_current_input(content)
+    save_input_message(session, conversation_id, run_id, current_input)
+    input = build_input(developer_prompt, messages, current_input)
+
+    yield RunStartedEvent(thread_id=conversation_id, run_id=run_id)
+
+    async for event in loop(input, settings, client):
+        match event:
+            case ResponseOutputItemAddedEvent(item=ResponseReasoningItem()):
+                yield ThinkingStartEvent()
+                yield ThinkingTextMessageStartEvent()
+            case ResponseReasoningSummaryTextDeltaEvent(delta=delta):
+                yield ThinkingTextMessageContentEvent(delta=delta)
+            case ResponseReasoningSummaryTextDoneEvent():
+                yield ThinkingTextMessageEndEvent()
+            case ResponseOutputItemDoneEvent(item=ResponseReasoningItem()):
+                yield ThinkingEndEvent()
+            case ToolCallStartEvent() | ToolCallEndEvent() | ToolCallResultEvent():
+                yield event
+            case FunctionCallOutputs(outputs=outputs):
+                save_function_call_outputs(session, conversation_id, run_id, outputs)
+            case ResponseOutputItemAddedEvent(
+                item=ResponseOutputMessage(id=message_id)
+            ):
+                yield TextMessageStartEvent(
+                    message_id=message_id,
+                    role="assistant",
+                )
+            case ResponseTextDeltaEvent(item_id=message_id, delta=delta):
+                yield TextMessageContentEvent(
+                    message_id=message_id,
+                    delta=delta,
+                )
+            case ResponseOutputItemDoneEvent(item=ResponseOutputMessage(id=message_id)):
+                yield TextMessageEndEvent(message_id=message_id)
+            case ResponseCompletedEvent(response=response):
+                save_response_message(session, conversation_id, run_id, response)
+            case ResponseErrorEvent(code=code, message=message):
+                yield RunErrorEvent(code=code, message=message)
+                return
+            case ResponseFailedEvent(response=response):
+                error = response.error
+                yield RunErrorEvent(
+                    code=error.code if error else None,
+                    message=error.message if error else "响应失败",
+                )
+                return
+            case ResponseIncompleteEvent(response=response):
+                details = response.incomplete_details
+                reason = details.reason if details else None
+                yield RunErrorEvent(
+                    code=reason,
+                    message=(f"响应未完成：{reason}" if reason else "响应未完成"),
+                )
+                return
+
+    yield RunFinishedEvent(thread_id=conversation_id, run_id=run_id)
 
 
 def create_run_id() -> str:
@@ -64,192 +139,51 @@ def load_developer_prompt(path: Path) -> str:
 
 
 def build_input(
-    messages: list[Message],
     developer_prompt: str,
+    messages: list[Message],
+    current_input: list[dict[str, object]],
 ) -> ResponseInputParam:
-    input: list[object] = [
+    response_input: list[object] = [
         {"role": "developer", "content": developer_prompt},
     ]
 
     for message in messages:
         if message.input:
-            input.extend(message.input)
+            response_input.extend(message.input)
         if message.output:
-            input.extend(message.output)
+            response_input.extend(message.output)
 
-    return RESPONSE_INPUT_ADAPTER.validate_python(input)
+    response_input.extend(current_input)
 
-
-def get_tool_calls(response: Response) -> list[ResponseFunctionToolCall]:
-    return [
-        item for item in response.output if isinstance(item, ResponseFunctionToolCall)
-    ]
+    return RESPONSE_INPUT_ADAPTER.validate_python(response_input)
 
 
-async def chat(
-    content: str,
-    settings: Settings,
-    client: AsyncOpenAI,
-    session: Session,
-) -> Response:
-    run_id = create_run_id()
-
-    save_user_message(session, run_id, content)
-
-    messages = list_recent_run_messages(session, settings.chat_history_run_limit)
-    developer_prompt = load_developer_prompt(settings.developer_prompt_path)
-    input = build_input(messages, developer_prompt)
-
-    while True:
-        response = await client.responses.create(
-            model=settings.openai_model,
-            input=input,
-            reasoning={"effort": "none"},
-            tools=TOOLS,
-            parallel_tool_calls=False,
-        )
-
-        save_response_message(session, run_id, response)
-
-        tool_calls = get_tool_calls(response)
-        if tool_calls:
-            input.extend(
-                item.model_dump(mode="json", exclude_none=True)
-                for item in response.output
-            )
-            tool_outputs: list[FunctionCallOutput] = []
-            for tool_call in tool_calls:
-                result = call_tool(tool_call)
-                tool_outputs.append(
-                    {
-                        "type": "function_call_output",
-                        "call_id": tool_call.call_id,
-                        "output": result,
-                    }
-                )
-            save_tool_outputs(session, run_id, tool_outputs)
-            input.extend(tool_outputs)
-            continue
-
-        return response
+def build_current_input(content: UserContent) -> list[dict[str, object]]:
+    return [_build_user_content_input(content)]
 
 
-async def chat_stream(
-    content: str,
-    settings: Settings,
-    client: AsyncOpenAI,
-    session: Session,
-) -> AsyncIterator[Event]:
-    run_id = create_run_id()
+def _build_user_content_input(content: UserContent) -> dict[str, object]:
+    match content:
+        case str() as content:
+            return {"role": "user", "content": content}
+        case list() as content:
+            return {
+                "role": "user",
+                "content": [_build_input_content_part(item) for item in content],
+            }
 
-    save_user_message(session, run_id, content)
 
-    messages = list_recent_run_messages(session, settings.chat_history_run_limit)
-    developer_prompt = load_developer_prompt(settings.developer_prompt_path)
-    input = build_input(messages, developer_prompt)
-
-    yield RunStartedEvent(thread_id=THREAD_ID, run_id=run_id)
-
-    while True:
-        stream = await client.responses.create(
-            model=settings.openai_model,
-            reasoning={"effort": "minimal"},
-            input=input,
-            tools=TOOLS,
-            parallel_tool_calls=False,
-            stream=True,
-        )
-
-        completed_event = None
-
-        async with stream:
-            async for event in stream:
-                match event:
-                    case ResponseOutputItemAddedEvent(item=item):
-                        match item:
-                            case ResponseReasoningItem():
-                                yield ThinkingStartEvent()
-                                yield ThinkingTextMessageStartEvent()
-                            case ResponseOutputMessage(id=message_id):
-                                yield TextMessageStartEvent(
-                                    message_id=message_id,
-                                    role="assistant",
-                                )
-                    case ResponseReasoningSummaryTextDeltaEvent(delta=delta):
-                        yield ThinkingTextMessageContentEvent(delta=delta)
-                    case ResponseReasoningSummaryTextDoneEvent():
-                        yield ThinkingTextMessageEndEvent()
-                    case ResponseTextDeltaEvent(item_id=message_id, delta=delta):
-                        yield TextMessageContentEvent(
-                            message_id=message_id,
-                            delta=delta,
-                        )
-                    case ResponseOutputItemDoneEvent(item=item):
-                        match item:
-                            case ResponseReasoningItem():
-                                yield ThinkingEndEvent()
-                            case ResponseOutputMessage(id=message_id):
-                                yield TextMessageEndEvent(message_id=message_id)
-                    case ResponseErrorEvent(code=code, message=message):
-                        yield RunErrorEvent(code=code, message=message)
-                        return
-                    case ResponseFailedEvent(response=response):
-                        error = response.error
-                        yield RunErrorEvent(
-                            code=error.code if error else None,
-                            message=error.message if error else "响应失败",
-                        )
-                        return
-                    case ResponseIncompleteEvent(response=response):
-                        details = response.incomplete_details
-                        reason = details.reason if details else None
-                        yield RunErrorEvent(
-                            code=reason,
-                            message=(
-                                f"响应未完成：{reason}" if reason else "响应未完成"
-                            ),
-                        )
-                        return
-                    case ResponseCompletedEvent():
-                        completed_event = event
-
-        if completed_event is None:
-            yield RunErrorEvent(message="响应流结束但未收到完成事件")
-            return
-
-        response = completed_event.response
-        save_response_message(session, run_id, response)
-
-        tool_calls = get_tool_calls(response)
-        if tool_calls:
-            tool_outputs: list[FunctionCallOutput] = []
-            for tool_call in tool_calls:
-                yield ToolCallStartEvent(
-                    tool_call_id=tool_call.call_id,
-                    tool_call_name=tool_call.name,
-                )
-                result = call_tool(tool_call)
-                yield ToolCallEndEvent(tool_call_id=tool_call.call_id)
-                yield ToolCallResultEvent(
-                    message_id=f"msg_{uuid4().hex}",
-                    tool_call_id=tool_call.call_id,
-                    content=result,
-                    role="tool",
-                )
-                tool_outputs.append(
-                    {
-                        "type": "function_call_output",
-                        "call_id": tool_call.call_id,
-                        "output": result,
-                    }
-                )
-            save_tool_outputs(session, run_id, tool_outputs)
-            input.extend(
-                item.model_dump(mode="json", exclude_none=True)
-                for item in response.output
-            )
-            input.extend(tool_outputs)
-            continue
-
-        yield RunFinishedEvent(thread_id=THREAD_ID, run_id=run_id)
-        return
+def _build_input_content_part(item: object) -> dict[str, object]:
+    match item:
+        case TextInputContent(text=text):
+            return {"type": "input_text", "text": text}
+        case ImageInputContent(source=InputContentUrlSource(value=image_url)):
+            return {
+                "type": "input_image",
+                "image_url": image_url,
+                "detail": "auto",
+            }
+        case ImageInputContent():
+            raise ValueError("图片输入仅支持 URL 来源")
+        case _:
+            raise ValueError("用户消息内容仅支持文本和图片")

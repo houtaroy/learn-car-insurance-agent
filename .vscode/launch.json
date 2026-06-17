@@ -9,7 +9,9 @@
       "module": "fastapi",
       "args": [
         "dev",
-        "app/main.py"
+        "app/main.py",
+        "--port",
+        "8001",
       ],
       "cwd": "${workspaceFolder}",
       "envFile": "${workspaceFolder}/.env",

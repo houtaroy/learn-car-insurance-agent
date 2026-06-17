@@ -23,6 +23,7 @@ def list_messages(
 
 def list_recent_run_messages(
     session: Session,
+    conversation_id: str,
     run_limit: int,
     cursor: int | None = None,
 ) -> list[Message]:
@@ -30,7 +31,10 @@ def list_recent_run_messages(
 
     latest_runs_statement = (
         select(run_id_column)
-        .where(run_id_column.is_not(None))
+        .where(
+            col(Message.conversation_id) == conversation_id,
+            run_id_column.is_not(None),
+        )
         .group_by(run_id_column)
     )
     if cursor is not None:
@@ -48,7 +52,10 @@ def list_recent_run_messages(
 
     statement = (
         select(Message)
-        .where(col(Message.run_id).in_(run_ids))
+        .where(
+            col(Message.conversation_id) == conversation_id,
+            col(Message.run_id).in_(run_ids),
+        )
         .order_by(col(Message.id))
     )
     return list(session.exec(statement).all())
@@ -59,12 +66,18 @@ def clear_messages(session: Session) -> None:
     session.commit()
 
 
-def save_user_message(session: Session, run_id: str, content: str) -> None:
+def save_input_message(
+    session: Session,
+    conversation_id: str,
+    run_id: str,
+    input: list[dict[str, Any]],
+) -> None:
     created_at = time()
     session.add(
         Message(
+            conversation_id=conversation_id,
             run_id=run_id,
-            input=[{"role": "user", "content": content}],
+            input=input,
             created_at=created_at,
             completed_at=created_at,
         )
@@ -74,10 +87,12 @@ def save_user_message(session: Session, run_id: str, content: str) -> None:
 
 def save_response_message(
     session: Session,
+    conversation_id: str,
     run_id: str,
     response: Response,
 ) -> None:
     message = Message(
+        conversation_id=conversation_id,
         run_id=run_id,
         response_id=response.id,
         model=response.model,
@@ -91,17 +106,19 @@ def save_response_message(
     session.commit()
 
 
-def save_tool_outputs(
+def save_function_call_outputs(
     session: Session,
+    conversation_id: str,
     run_id: str,
-    tool_outputs: list[FunctionCallOutput],
+    outputs: list[FunctionCallOutput],
 ) -> None:
     created_at = time()
     serialized_outputs: list[dict[str, Any]] = [
-        dict(tool_output) for tool_output in tool_outputs
+        dict(tool_output) for tool_output in outputs
     ]
     session.add(
         Message(
+            conversation_id=conversation_id,
             run_id=run_id,
             input=serialized_outputs,
             created_at=created_at,
